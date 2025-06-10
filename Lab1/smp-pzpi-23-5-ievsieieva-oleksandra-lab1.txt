@@ -1,0 +1,286 @@
+МІНІСТЕРСТВО ОСВІТИ І НАУКИ УКРАЇНИ
+ХАРКІВСЬКИЙ НАЦІОНАЛЬНИЙ УНІВЕРСИТЕТ РАДІОЕЛЕКТРОНІКИ
+
+
+КАФЕДРА ПРОГРАМНОЇ ІНЖЕНЕРІЇ
+
+
+
+
+Звіт
+з лабораторної роботи № 1 з дисципліни
+Скриптові мови програмування
+   
+
+
+
+
+
+Виконала:                                                                                     Перевірив:
+ст. гр. ПЗПІ-23-5                        				ст. викладач кафедри ПІ
+Євсєєва Олександра						Сокорчук Ігор Петрович
+
+
+
+
+
+
+
+
+
+Харків 2025 
+1 ІСТОРІЯ ЗМІН
+
+№	Дата	Версія звіту	Опис змін та виправлень
+1	06.06	1.0	Створено звіт
+
+ 
+2 ЗАВДАННЯ
+
+Розробити Bash-скрипт, який обробляє експортований із сайту https://cist.nure.ua/ розклад занять для всіх груп потоку в форматі CSV та перетворює його у формат CSV для завантаження в Google Календар https://support.google.com/.
+ 
+3 ОПИС ВИКОНАНОЇ РОБОТИ
+
+	Почнемо із першого пункту – виводу меню допомоги.
+ 1  #!/bin/bash
+ 2  
+ 3  display_usage() {
+ 4      echo "Usage: script.sh [--help | --version] | [[-s|--silent] [group_code] input_file.csv]"
+ 5      echo ""
+ 6      echo "Options:"
+ 7      echo "  --help       Show help information"
+ 8      echo "  --version    Show script version"
+ 9      echo "  -s, --silent Suppress standard output"
+ 10  }
+ 11  
+ 12  display_version() {
+ 13      echo "Script version 1.0.0-mod"
+ 14  }
+ 20  while [[ $# -gt 0 ]]; do
+
+	Функція display_usage та цикл while після неї ініціалізують роботу меню допомоги і інструкцію, як користуватись скриптом. Цикл обробляє обраний варіант та викликає відповідну функцію. В іншому випадку перевіряємо наявність аргументу академіної групи або розкладу у форматі CSV.
+49  if [ -z "$input_csv" ]; then
+50      echo "Available CSV files:"
+51      select chosen_file in Schedule_*.csv; do
+52          if [ -n "$chosen_file" ]; then
+53              input_csv="$chosen_file"
+54              break
+55          fi
+56          echo "Invalid selection. Try again."
+57      done
+58  fi
+59  
+60  available_groups=$(iconv -f windows-1251 -t utf-8 "$input_csv" |
+
+	Далі виконується вибір CSV-файлу, якщо він не вказаний. В іншому випадку отримаємо відфільтрований та сортований список, витягуючи за допомогою awk назви груп із першого стовпця. 
+71  if [ -z "$target_group" ]; then
+72      echo "Select a group:"
+73      select group_sel in $available_groups; do
+74          if [ -n "$group_sel" ]; then
+75              selected_group="$group_sel"
+76              break
+77          fi
+	Тепер обираємо групу: передаємо або обираємо з меню. Після чого описуємо шапку CSV-файлу у форматі Google Calendar. 
+	Потім знову читаємо CSV, знімаємо windows кодування і сортуємо. Отже маємо ключ, тип, дати/часи початку та завершення та опис.
+	Для додавання до Google Calendar:
+115 ' | sort -t'|' -k1,1 |
+116 awk -F'|' -v silent="$silent_flag" '
+117 BEGIN {
+118     OFS=",";
+119 }
+120 
+121 function convert_time(t, h, m, ap) {
+122     split(t, tm, ":")
+123     h = tm[1]+0
+124     m = tm[2]+0
+125     ap = (h >= 12) ? "PM" : "AM"
+126     if (h == 0) h = 12
+127     else if (h > 12) h -= 12
+128     return sprintf("%02d:%02d %s", h, m, ap)
+129 }
+130 
+131 function convert_date(d, dd) {
+132     split(d, dd, ".")
+133     return sprintf("%02d/%02d/%04d", dd[2], dd[1], dd[3])
+134 }
+
+sort впорядковує записи за побудованим ключем із дати та часу. Потім функції convert_date() і convert_time() перетворюють формат дат у MM/DD/YYYY, а час – у HH:MM AM/PM. Як підсумок створює рядок у форматі для Google Calendar.
+Якщо не стоїть тихий режим, то виведе файл на екран.
+ 
+4 ВИСНОВКИ
+
+Під час виконання лабораторної роботи було створено Bash-скрипт для роботи із файлами. Створений скрипт дозволяє конвертувати розклад із CSV-файлу у формат, придатний для імпорту в Google Календар. Форматування, фільтрація та сортування були реалізовані завдяки таким командам: select, ls, awk, sort, uniq, tee, cat, sed та iconv.
+ 
+ДОДАТОК А
+Програмний код
+
+А.1 {smp-pzpi-23-5-ievsieieva-oleksandra-lab1-code.sh}
+GitHub репозиторій: https://github.com/NureIevsieievaOleksandra/smp-pzpi-23-5-ievsieieva-oleksandra/blob/main/Lab1/smp-pzpi-23-5-ievsieieva-oleksandra-lab1-code.sh 
+1  #!/bin/bash
+ 2  
+ 3  display_usage() {
+ 4      echo "Usage: script.sh [--help | --version] | [[-s|--silent] [group_code] input_file.csv]"
+ 5      echo ""
+ 6      echo "Options:"
+ 7      echo "  --help       Show help information"
+ 8      echo "  --version    Show script version"
+ 9      echo "  -s, --silent Suppress standard output"
+10  }
+11  
+12  display_version() {
+13      echo "Script version 1.0.0-mod"
+14  }
+15  
+16  silent_flag=false
+17  input_csv=""
+18  target_group=""
+19  
+20  while [[ $# -gt 0 ]]; do
+21      case $1 in
+22          --help)
+23              display_usage
+24              exit 0
+25              ;;
+26          --version)
+27              display_version
+28              exit 0
+29              ;;
+30          -s|--silent)
+31              silent_flag=true
+32              shift
+33              ;;
+34          *)
+35              if [[ "$1" =~ ^ПЗПІ-[0-9]+-[0-9]+$ ]]; then
+36                  target_group="$1"
+37              elif [[ "$1" =~ ^Schedule_[0-9]+_[0-9]+_[0-9]+\.csv$ ]]; then
+38                  input_csv="$1"
+39              else
+40                  echo "Unknown option or too many arguments."
+41                  display_usage
+42                  exit 1
+43              fi
+44              shift
+45              ;;
+46      esac
+47  done
+48  
+49  if [ -z "$input_csv" ]; then
+50      echo "Available CSV files:"
+51      select chosen_file in Schedule_*.csv; do
+52          if [ -n "$chosen_file" ]; then
+53              input_csv="$chosen_file"
+54              break
+55          fi
+56          echo "Invalid selection. Try again."
+57      done
+58  fi
+59  
+60  available_groups=$(iconv -f windows-1251 -t utf-8 "$input_csv" |
+61      sed -e 's/\r\n/\n/g' -e 's/\r/\n/g' |
+62      sed 's/"//g' |
+63      awk -F',' 'NR > 1 { split($1, tokens, " - "); print tokens[1] }' |
+64      sort -V | uniq)
+65  
+66  if [ -z "$available_groups" ]; then
+67      echo "No groups found."
+68      exit 1
+69  fi
+70  
+71  if [ -z "$target_group" ]; then
+72      echo "Select a group:"
+73      select group_sel in $available_groups; do
+74          if [ -n "$group_sel" ]; then
+75              selected_group="$group_sel"
+76              break
+77          fi
+78          echo "Invalid selection. Try again."
+79      done
+80  else
+81      selected_group="$target_group"
+82  fi
+83  
+84  result_file="Converted_${input_csv}"
+85  
+86  echo "\"Subject\",\"Start Date\",\"Start Time\",\"End Date\",\"End Time\",\"Description\"" > "$result_file"
+87  
+88  iconv -f windows-1251 -t utf-8 "$input_csv" |
+89  sed -e 's/\r\n/\n/g' -e 's/\r/\n/g' |
+90  awk -v grp="$selected_group" '
+91  BEGIN {
+92      FS="\",\"";
+93      OFS="|";
+94  }
+95  
+96  function build_key(d, t) {
+97      split(d, dd, ".")
+98      split(t, tt, ":")
+99      return sprintf("%04d%02d%02d%02d%02d", dd[3], dd[2], dd[1], tt[1], tt[2])
+100 }
+101 
+102 NR > 1 {
+103     gsub(/^"/, "", $1)
+104     gsub(/"$/, "", $(NF))
+105 
+106     split($1, pair, " - ")
+107     grp_name = pair[1]
+108     subject_type = pair[2]
+109 
+110     if (grp_name == grp) {
+111         unique_key = build_key($2, $3)
+112         print unique_key, subject_type, $2, $3, $4, $5, $12
+113     }
+114 }
+115 ' | sort -t'|' -k1,1 |
+116 awk -F'|' -v silent="$silent_flag" '
+117 BEGIN {
+118     OFS=",";
+119 }
+120 
+121 function convert_time(t, h, m, ap) {
+122     split(t, tm, ":")
+123     h = tm[1]+0
+124     m = tm[2]+0
+125     ap = (h >= 12) ? "PM" : "AM"
+126     if (h == 0) h = 12
+127     else if (h > 12) h -= 12
+128     return sprintf("%02d:%02d %s", h, m, ap)
+129 }
+130 
+131 function convert_date(d, dd) {
+132     split(d, dd, ".")
+133     return sprintf("%02d/%02d/%04d", dd[2], dd[1], dd[3])
+134 }
+135 
+136 {
+137     label = $2
+138     start_dt = $3
+139 
+140     split(start_dt, dp, ".")
+141     d_id = sprintf("%04d%02d%02d", dp[3], dp[2], dp[1])
+142     tag = label "-" d_id
+143 
+144     if (!(tag in counted)) {
+145         label_count[label]++
+146         counted[tag] = label_count[label]
+147     }
+148 
+149     seq = counted[tag]
+150 
+151     formatted = "\"" label "; No." seq "\"," \
+152                 "\"" convert_date($3) "\"," \
+153                 "\"" convert_time($4) "\"," \
+154                 "\"" convert_date($5) "\"," \
+155                 "\"" convert_time($6) "\"," \
+156                 "\"" $7 "\""
+157 
+158     print formatted >> out_file
+159 
+160     if (silent != "true") {
+161         print formatted
+162     }
+163 }
+164 ' out_file="$result_file"
+165 
+166 if ! $silent_flag; then
+167     echo "CSV saved as: $result_file"
+168 fi

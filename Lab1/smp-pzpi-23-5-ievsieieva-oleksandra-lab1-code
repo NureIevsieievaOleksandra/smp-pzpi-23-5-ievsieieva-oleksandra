@@ -1,0 +1,168 @@
+󐁨󐀊򠀍򠀍󐀢򠀍󐀢򠀍򠀍󐁽󐀊򠀍󐀢򠀍򠀍󐁥󐀢򠀍򠀍򠀍򠀍󐀩򠀍򠀍򠀍򠀍󐁮󐀰󐀻󐀩󐁥򠀍򠀍򠀍󐁮򠀍󐁮󐀢󐁥󐀢򠀍򠀍򠀍󐁴󐀻󐁣󐁥󐀊󐁮򠀍򠀍򠀍򠀍󐁫󐁩󐀢󐁥󐁩󐀊󐁼򠀍򠀍򠀍󐀩󐀊򠀍󐀢󐀱󐁩󐀊򠀍򠀍󐁯󐁮򠀍󐁫󐁩󐀢󐁥󐁥󐀢󐁩󐀊󐀢󐀊򠀍򠀍󐁼򠀍򠀍󐁻򠀍򠀍󐁽󐀊󐁻򠀍󐀩򠀍󐁽󐀊󐁻󐀩򠀍򠀍򠀍򠀍򠀍򠀍򠀍򠀍󐀲򠀍󐁽󐁼󐀧򠀍򠀍󐁽󐀊󐁻򠀍󐀰򠀍򠀍򠀍򠀍򠀍󐁽󐀊󐁻򠀍󐀩򠀍򠀍󐁻󐀲򠀍򠀍򠀍󐀩󐁤󐀊󐁻󐀫򠀍󐁽󐀊󐁝󐀊󐁜򠀍󐁜򠀍󐁜󐀢󐀊򠀍򠀍󐁻򠀍󐁽򠀍󐀢󐀊򠀍󐀢i#!/bin/bash
+
+display_usage() {
+    echo "Usage: script.sh [--help | --version] | [[-s|--silent] [group_code] input_file.csv]"
+    echo ""
+    echo "Options:"
+    echo "  --help       Show help information"
+    echo "  --version    Show script version"
+    echo "  -s, --silent Suppress standard output"
+}
+
+display_version() {
+    echo "Script version 1.0.0-mod"
+}
+
+silent_flag=false
+input_csv=""
+target_group=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --help)
+            display_usage
+            exit 0
+            ;;
+        --version)
+            display_version
+            exit 0
+            ;;
+        -s|--silent)
+            silent_flag=true
+            shift
+            ;;
+        *)
+            if [[ "$1" =~ ^CSGP-[0-9]+-[0-9]+$ ]]; then
+                target_group="$1"
+            elif [[ "$1" =~ ^Schedule_[0-9]+_[0-9]+_[0-9]+\.csv$ ]]; then
+                input_csv="$1"
+            else
+                echo "Unknown option or too many arguments."
+                display_usage
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$input_csv" ]; then
+    echo "Available CSV files:"
+    select chosen_file in Schedule_*.csv; do
+        if [ -n "$chosen_file" ]; then
+            input_csv="$chosen_file"
+            break
+        fi
+        echo "Invalid selection. Try again."
+    done
+fi
+
+available_groups=$(iconv -f windows-1251 -t utf-8 "$input_csv" |
+    sed -e 's/\r\n/\n/g' -e 's/\r/\n/g' |
+    sed 's/"//g' |
+    awk -F',' 'NR > 1 { split($1, tokens, " - "); print tokens[1] }' |
+    sort -V | uniq)
+
+if [ -z "$available_groups" ]; then
+    echo "No groups found."
+    exit 1
+fi
+
+if [ -z "$target_group" ]; then
+    echo "Select a group:"
+    select group_sel in $available_groups; do
+        if [ -n "$group_sel" ]; then
+            selected_group="$group_sel"
+            break
+        fi
+        echo "Invalid selection. Try again."
+    done
+else
+    selected_group="$target_group"
+fi
+
+result_file="Converted_${input_csv}"
+
+echo "\"Subject\",\"Start Date\",\"Start Time\",\"End Date\",\"End Time\",\"Description\"" > "$result_file"
+
+iconv -f windows-1251 -t utf-8 "$input_csv" |
+sed -e 's/\r\n/\n/g' -e 's/\r/\n/g' |
+awk -v grp="$selected_group" '
+BEGIN {
+    FS="\",\"";
+    OFS="|";
+}
+
+function build_key(d, t) {
+    split(d, dd, ".")
+    split(t, tt, ":")
+    return sprintf("%04d%02d%02d%02d%02d", dd[3], dd[2], dd[1], tt[1], tt[2])
+}
+
+NR > 1 {
+    gsub(/^"/, "", $1)
+    gsub(/"$/, "", $(NF))
+
+    split($1, pair, " - ")
+    grp_name = pair[1]
+    subject_type = pair[2]
+
+    if (grp_name == grp) {
+        unique_key = build_key($2, $3)
+        print unique_key, subject_type, $2, $3, $4, $5, $12
+    }
+}
+' | sort -t'|' -k1,1 |
+awk -F'|' -v silent="$silent_flag" '
+BEGIN {
+    OFS=",";
+}
+
+function convert_time(t, h, m, ap) {
+    split(t, tm, ":")
+    h = tm[1]+0
+    m = tm[2]+0
+    ap = (h >= 12) ? "PM" : "AM"
+    if (h == 0) h = 12
+    else if (h > 12) h -= 12
+    return sprintf("%02d:%02d %s", h, m, ap)
+}
+
+function convert_date(d, dd) {
+    split(d, dd, ".")
+    return sprintf("%02d/%02d/%04d", dd[2], dd[1], dd[3])
+}
+
+{
+    label = $2
+    start_dt = $3
+
+    split(start_dt, dp, ".")
+    d_id = sprintf("%04d%02d%02d", dp[3], dp[2], dp[1])
+    tag = label "-" d_id
+
+    if (!(tag in counted)) {
+        label_count[label]++
+        counted[tag] = label_count[label]
+    }
+
+    seq = counted[tag]
+
+    formatted = "\"" label "; No." seq "\"," \
+                "\"" convert_date($3) "\"," \
+                "\"" convert_time($4) "\"," \
+                "\"" convert_date($5) "\"," \
+                "\"" convert_time($6) "\"," \
+                "\"" $7 "\""
+
+    print formatted >> out_file
+
+    if (silent != "true") {
+        print formatted
+    }
+}
+' out_file="$result_file"
+
+if ! $silent_flag; then
+    echo "CSV saved as: $result_file"
+fi
